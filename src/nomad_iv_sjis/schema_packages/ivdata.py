@@ -6,6 +6,16 @@ from nomad.datamodel.data import EntryData
 from nomad.metainfo.elasticsearch_extension import Elasticsearch
 from nomad.datamodel.metainfo.plot import PlotSection, PlotlyFigure #, PlotlyGraphObject
 
+from nomad.units import ureg
+
+from nomad.datamodel.results import (
+    Results,
+    Properties,
+    OptoelectronicProperties,
+    SolarCell,
+)
+
+
 m_package = SchemaPackage()
 
 
@@ -142,6 +152,13 @@ class IVData(EntryData, PlotSection):
     )
 
 
+    
+    jsc_mA_cm2 = Quantity(
+        type=float,
+        description='Short-circuit current density in mA/cm^2.'
+    )
+
+
 
     # IV arrays
     voltage = Quantity(
@@ -159,6 +176,9 @@ class IVData(EntryData, PlotSection):
 
         """Read a CP932/SJIS IV csv file, parse metadata and IV arrays."""
         super().normalize(archive, logger)
+
+
+
 
         # 1. まず self.data_file から local variable を初期化する
         data_file = self.data_file
@@ -256,6 +276,21 @@ class IVData(EntryData, PlotSection):
             self.voltage = pd.to_numeric(df['V(V)'], errors='coerce').dropna().astype(float).tolist()
             self.current = pd.to_numeric(df['I(A)'], errors='coerce').dropna().astype(float).tolist()
 
+
+            # mA/cm2 で扱えるように jsc_mA_cm2 という項目も作る.            
+            if self.isc is not None and self.area_cm2 is not None:
+                isc = self._to_quantity(self.isc, ureg.ampere)
+                area = self._to_quantity(self.area_cm2, ureg.centimeter ** 2)
+
+                if area.magnitude != 0:
+                    jsc_mA_cm2 = (isc / area).to(
+                        ureg.milliampere / (ureg.centimeter ** 2)
+                    )
+                    self.jsc_mA_cm2 = jsc_mA_cm2.magnitude
+
+
+
+            self._copy_to_solar_cell_results(archive, logger)
             
             self.figures = [
                 PlotlyFigure(
@@ -279,7 +314,7 @@ class IVData(EntryData, PlotSection):
                 )
             ]
 
-
+            
             logger.info(
                 'IV csv parsed successfully.',
                 n_points=len(self.voltage),
@@ -297,96 +332,78 @@ class IVData(EntryData, PlotSection):
                 exc_info=e,
             )
             raise
+        
+    def _to_quantity(self, value, unit):
+        """Return value as a Pint quantity with the given unit."""
+        if value is None:
+            return None
+
+        # value がすでに Pint Quantity の場合
+        if hasattr(value, "to"):
+            return value.to(unit)
+
+        # value が plain float/int の場合
+        return float(value) * unit
+
+
+    def _to_float_magnitude(self, value):
+        """Return dimensionless magnitude from float or Pint quantity."""
+        if value is None:
+            return None
+
+        if hasattr(value, "magnitude"):
+            return float(value.magnitude)
+
+        return float(value)
+
+
+    def _copy_to_solar_cell_results(self, archive, logger):
+        """Copy IV parameters to NOMAD standard Solar Cells results."""
+
+        if archive.results is None:
+            archive.results = Results()
+
+        if archive.results.properties is None:
+            archive.results.properties = Properties()
+
+        if archive.results.properties.optoelectronic is None:
+            archive.results.properties.optoelectronic = OptoelectronicProperties()
+
+        if archive.results.properties.optoelectronic.solar_cell is None:
+            archive.results.properties.optoelectronic.solar_cell = SolarCell()
+
+        solar_cell = archive.results.properties.optoelectronic.solar_cell
+
+        # efficiency: unit=None
+        if self.eff_percent is not None:
+            solar_cell.efficiency = self._to_float_magnitude(self.eff_percent)
+
+        # fill_factor: unit=None
+        if self.ff_percent is not None:
+            solar_cell.fill_factor = self._to_float_magnitude(self.ff_percent)
+
+        # open_circuit_voltage: unit=volt
+        if self.voc is not None:
+            voc = self._to_quantity(self.voc, ureg.volt)
+            solar_cell.open_circuit_voltage = voc.magnitude
+
+        # short_circuit_current_density: unit=ampere / meter ** 2
+        if (
+            self.isc is not None
+            and self.area_cm2 is not None
+        ):
+            isc = self._to_quantity(self.isc, ureg.ampere)
+            area = self._to_quantity(self.area_cm2, ureg.centimeter ** 2)
+
+            if area.magnitude != 0:
+                jsc = (isc / area).to(ureg.ampere / (ureg.meter ** 2))
+                solar_cell.short_circuit_current_density = jsc.magnitude
+        
 
 
 
 
-from pathlib import Path
 
 
-def _find_csv_in_same_upload(archive, logger):
-    """
-    ####### これは使ってない ######
-    
-    NOMAD upload 内から IV CSV 候補を探す。
-
-    優先順位:
-    1. mainfile と同じディレクトリの CSV
-    2. upload 全体の CSV
-
-    Returns:
-        str: NOMAD raw_file() に渡せる upload 内相対パス
-
-    Raises:
-        ValueError: CSV が見つからない、または複数あり一意に決められない場合
-    """
-
-    # archive.metadata.mainfile は、多くの場合 test_iv.archive.yaml の upload 内パス
-    mainfile = getattr(archive.metadata, 'mainfile', None)
-    main_dir = str(Path(mainfile).parent) if mainfile else '.'
-    if main_dir == '.':
-        main_dir = ''
-
-    # NOMAD のバージョン差を吸収するため、候補取得を少し防御的に書く
-    raw_files = []
-
-    # 方法 1: m_context に raw_file_manifest がある場合
-    if hasattr(archive.m_context, 'raw_file_manifest'):
-        manifest = archive.m_context.raw_file_manifest()
-        if isinstance(manifest, dict):
-            raw_files = list(manifest.keys())
-        else:
-            raw_files = list(manifest)
-
-    # 方法 2: upload_files.raw_file_manifest() がある場合
-    elif hasattr(archive.m_context, 'upload_files') and hasattr(
-        archive.m_context.upload_files, 'raw_file_manifest'
-    ):
-        manifest = archive.m_context.upload_files.raw_file_manifest()
-        if isinstance(manifest, dict):
-            raw_files = list(manifest.keys())
-        else:
-            raw_files = list(manifest)
-
-    else:
-        raise ValueError(
-            'Could not list raw files in upload. '
-            'Please specify data_file explicitly.'
-        )
-
-    csv_files = [
-        f for f in raw_files
-        if f.lower().endswith('.csv')
-    ]
-
-    if not csv_files:
-        raise ValueError(
-            'No CSV file was found in the upload. '
-            'Please upload an IV CSV file or specify data_file.'
-        )
-
-    # mainfile と同じディレクトリの CSV を優先
-    if main_dir:
-        same_dir_csv_files = [
-            f for f in csv_files
-            if str(Path(f).parent) == main_dir
-        ]
-    else:
-        same_dir_csv_files = [
-            f for f in csv_files
-            if str(Path(f).parent) in ('', '.')
-        ]
-
-    candidates = same_dir_csv_files or csv_files
-
-    if len(candidates) == 1:
-        logger.info('Automatically selected CSV file', data_file=candidates[0])
-        return candidates[0]
-
-    raise ValueError(
-        'Multiple CSV files were found in the upload, '
-        'and the IV CSV file could not be selected automatically: '
-        f'{candidates}. Please specify data_file explicitly.'
-    )
 
 m_package.__init_metainfo__()
