@@ -3,6 +3,8 @@ import re
 import pandas as pd
 from nomad.metainfo import Quantity, Section, SchemaPackage
 from nomad.datamodel.data import EntryData
+from nomad.metainfo.elasticsearch_extension import Elasticsearch
+
 
 m_package = SchemaPackage()
 
@@ -59,13 +61,57 @@ class IVData(EntryData):
     count = Quantity(type=int, description='Number of IV points.')
     area_cm2 = Quantity(type=float, description='Cell area [cm^2].')
 
-    voc = Quantity(type=float, description='Open-circuit voltage [V].')
-    isc = Quantity(type=float, description='Short-circuit current [A].')
-    ff_percent = Quantity(type=float, description='Fill factor [%].')
-    pmax = Quantity(type=float, description='Maximum power [W].')
-    eff_percent = Quantity(type=float, description='Efficiency [%].')
-    vpm = Quantity(type=float, description='Voltage at maximum power [V].')
-    ipm = Quantity(type=float, description='Current at maximum power [A].')
+
+
+
+    voc = Quantity(
+        type=float,
+        unit='V',
+        description='Open-circuit voltage.',
+        a_elasticsearch=[Elasticsearch()],
+    )
+
+    isc = Quantity(
+        type=float,
+        unit='A',
+        description='Short-circuit current.',
+        a_elasticsearch=[Elasticsearch()],
+    )
+
+    ff_percent = Quantity(
+        type=float,
+        description='Fill factor [%].',
+        a_elasticsearch=[Elasticsearch()],
+    )
+
+    pmax = Quantity(
+        type=float,
+        unit='W',
+        description='Maximum power.',
+        a_elasticsearch=[Elasticsearch()],
+    )
+
+    eff_percent = Quantity(
+        type=float,
+        description='Efficiency [%].',
+        a_elasticsearch=[Elasticsearch()],
+    )
+
+    vpm = Quantity(
+        type=float,
+        unit='V',
+        description='Voltage at maximum power.',
+        a_elasticsearch=[Elasticsearch()],
+    )
+
+    ipm = Quantity(
+        type=float,
+        unit='A',
+        description='Current at maximum power.',
+        a_elasticsearch=[Elasticsearch()],
+    )
+
+
 
     # IV arrays
     voltage = Quantity(
@@ -80,23 +126,23 @@ class IVData(EntryData):
     )
 
     def normalize(self, archive, logger):
+
         """Read a CP932/SJIS IV csv file, parse metadata and IV arrays."""
         super().normalize(archive, logger)
 
-        #if not self.data_file:
-        #    logger.debug('No data_file set, skipping IVData.normalize')
-        #    return
+        # 1. まず self.data_file から local variable を初期化する
+        data_file = self.data_file
 
-
-
+        # 2. data_file が未指定なら、今は明示エラーにする
+        #    自動探索は NOMAD processing context によって raw file list が取れず不安定だったため
         if not data_file:
             raise ValueError(
                 'data_file is not specified. '
-                'For archive.yaml based ingest, please specify the CSV file name, e.g. '
-                'data_file: L303-M13_0min_rvs_re.csv. '
-                'Automatic CSV discovery is not available in this NOMAD processing context.'
+                'Please specify the CSV file name in the archive.yaml, e.g. '
+                'data_file: L303-M13_0min_rvs_re.csv'
             )
 
+        # 3. 実際に使うファイル名を archive に保存する
         data_file = str(data_file)
         self.data_file = data_file
 
@@ -109,6 +155,7 @@ class IVData(EntryData):
 
             text = raw.decode('cp932')
             lines = text.splitlines()
+
             if len(lines) < 6:
                 logger.warning('CSV does not contain enough lines.', file=self.data_file, n_lines=len(lines))
                 return
