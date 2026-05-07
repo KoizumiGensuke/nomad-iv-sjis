@@ -1,0 +1,101 @@
+{
+  "data": {
+    "m_def": "nomad_iv_sjis.schema_packages.ivdata.IVData",
+    "data_file": "L303-M13_0min_rvs_re.csv"
+  },
+  "metadata": {
+    "entry_name": "test_iv.archive.yaml",
+    "entry_type": "IVData",
+    "mainfile": "/home/pvlab/nomad_hzb/hzb-se-image-2/nomad-iv-sjis/tests/data/test_iv.archive.yaml",
+    "text_search_contents": [
+      "L303-M13_0min_rvs_re.csv"
+    ],
+    "n_quantities": 8,
+    "quantities": [
+      "",
+      "data",
+      "data.data_file",
+      "metadata",
+      "metadata.entry_name",
+      "metadata.entry_type",
+      "metadata.mainfile",
+      "metadata.quantities",
+      "metadata.section_defs",
+      "metadata.section_defs.definition_id",
+      "metadata.section_defs.definition_qualified_name",
+      "metadata.section_defs.used_directly",
+      "metadata.sections",
+      "results",
+      "results.properties"
+    ],
+    "sections": [
+      "nomad.datamodel.datamodel.EntryArchive",
+      "nomad.datamodel.datamodel.EntryMetadata",
+      "nomad.datamodel.results.Properties",
+      "nomad.datamodel.results.Results",
+      "nomad_iv_sjis.schema_packages.ivdata.IVData"
+    ],
+    "section_defs": [
+      {
+        "definition_qualified_name": "nomad.datamodel.data.ArchiveSection",
+        "definition_id": "a4fc26727b8b3b1711ff8cea9896ac1910987509",
+        "used_directly": true
+      },
+      {
+        "definition_qualified_name": "nomad.datamodel.data.EntryData",
+        "definition_id": "486f476f18785f5f4bcbac10db7304d7de35636b",
+        "used_directly": true
+      },
+      {
+        "definition_qualified_name": "nomad.datamodel.datamodel.EntryArchive",
+        "definition_id": "6fc186e751acb9f7aea4d785dfbfb1a882918a69",
+        "used_directly": true
+      },
+      {
+        "definition_qualified_name": "nomad.datamodel.datamodel.EntryMetadata",
+        "definition_id": "089b7260031778a419dd5f905453a6ee10eb74b6",
+        "used_directly": true
+      },
+      {
+        "definition_qualified_name": "nomad.datamodel.results.Properties",
+        "definition_id": "231e82b671bf7a64d007f7f0eb46869cf0441793",
+        "used_directly": true
+      },
+      {
+        "definition_qualified_name": "nomad.datamodel.results.Results",
+        "definition_id": "240a855ffc7abf5dd6123f9bfd81f90c3e7ece05",
+        "used_directly": true
+      },
+      {
+        "definition_qualified_name": "nomad_iv_sjis.schema_packages.ivdata.IVData",
+        "definition_id": "f18e9ce7e30448a93affd426d4dc8c36858a2d29",
+        "used_directly": true
+      }
+    ],
+    "search_quantities": [
+      {
+        "id": "data.data_file#nomad_iv_sjis.schema_packages.ivdata.IVData",
+        "definition": "nomad_iv_sjis.schema_packages.ivdata.IVData.data_file",
+        "path_archive": "data.data_file",
+        "segments": {
+          "1": {
+            "path": "data",
+            "definitions": [
+              "nomad_iv_sjis.schema_packages.ivdata.IVData"
+            ]
+          },
+          "2": {
+            "path": "data_file",
+            "definitions": [
+              "nomad_iv_sjis.schema_packages.ivdata.IVData"
+            ]
+          }
+        },
+        "str_value": "L303-M13_0min_rvs_re.csv"
+      }
+    ]
+  },
+  "results": {
+    "properties": {}
+  }
+}

@@ -1,0 +1,2 @@
+[nomad.plugin]
+ivschema = nomad_iv_sjis.schema_packages:ivschema

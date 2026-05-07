@@ -1,0 +1,186 @@
+import io
+import re
+import pandas as pd
+from nomad.metainfo import Quantity, Section, SchemaPackage
+from nomad.datamodel.data import EntryData
+
+m_package = SchemaPackage()
+
+
+def _to_float(value):
+    """Convert various numeric string representations to float."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    s = str(value).strip()
+    if s == '':
+        return None
+    # normalize unicode minus and remove surrounding spaces
+    s = s.replace('−', '-')
+    try:
+        return float(s)
+    except ValueError:
+        # fallback: extract first float-like token
+        m = re.search(r'[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?', s)
+        return float(m.group(0)) if m else None
+
+
+class IVData(EntryData):
+    """
+    Entry type for IV csv data with metadata header and IV curve.
+
+    Assumed CSV structure:
+    - line 1: version,...
+    - line 2: file,...
+    - line 3: datetime,...,temperature,...
+    - line 4: Vstart(V),...,Vstop(V),...,Count,...,Area(cm2),...
+    - line 5: Voc(V),...,Isc(A),...,FF(%),...,Pmax(W),...,Eff(%),...,Vpm(V),...,Ipm(A),...
+    - line 6: header V(V),I(A)
+    - line 7+: IV data
+    """
+    m_def = Section()
+
+    # raw file
+    data_file = Quantity(
+        type=str,
+        description='Raw IV csv file inside the upload.',
+        a_eln={'component': 'FileEditQuantity'},
+    )
+
+    # header metadata
+    version = Quantity(type=str, description='Version / instrument header line.')
+    source_file_path = Quantity(type=str, description='Original file path written in the CSV header.')
+    measurement_datetime = Quantity(type=str, description='Measurement date/time string from CSV header.')
+    temperature = Quantity(type=float, description='Temperature value from CSV header.')
+
+    v_start = Quantity(type=float, description='Sweep start voltage [V].')
+    v_stop = Quantity(type=float, description='Sweep stop voltage [V].')
+    count = Quantity(type=int, description='Number of IV points.')
+    area_cm2 = Quantity(type=float, description='Cell area [cm^2].')
+
+    voc = Quantity(type=float, description='Open-circuit voltage [V].')
+    isc = Quantity(type=float, description='Short-circuit current [A].')
+    ff_percent = Quantity(type=float, description='Fill factor [%].')
+    pmax = Quantity(type=float, description='Maximum power [W].')
+    eff_percent = Quantity(type=float, description='Efficiency [%].')
+    vpm = Quantity(type=float, description='Voltage at maximum power [V].')
+    ipm = Quantity(type=float, description='Current at maximum power [A].')
+
+    # IV arrays
+    voltage = Quantity(
+        type=float,
+        shape=['*'],
+        description='Voltage values parsed from the CSV column V(V).',
+    )
+    current = Quantity(
+        type=float,
+        shape=['*'],
+        description='Current values parsed from the CSV column I(A).',
+    )
+
+    def normalize(self, archive, logger):
+        """Read a CP932/SJIS IV csv file, parse metadata and IV arrays."""
+        super().normalize(archive, logger)
+
+        if not self.data_file:
+            logger.debug('No data_file set, skipping IVData.normalize')
+            return
+
+        try:
+            # Read raw bytes to avoid text-reader encoding conflicts.
+            with archive.m_context.raw_file(self.data_file, 'rb') as f:
+                raw = f.read()
+
+            text = raw.decode('cp932')
+            lines = text.splitlines()
+            if len(lines) < 6:
+                logger.warning('CSV does not contain enough lines.', file=self.data_file, n_lines=len(lines))
+                return
+
+            # line 1: version,...
+            row0 = next(pd.read_csv(io.StringIO(lines[0]), header=None).itertuples(index=False), None)
+            if row0 and len(row0) >= 2:
+                self.version = str(row0[1]).strip() if row0[1] is not None else None
+
+            # line 2: file,...
+            row1 = next(pd.read_csv(io.StringIO(lines[1]), header=None).itertuples(index=False), None)
+            if row1 and len(row1) >= 2:
+                self.source_file_path = str(row1[1]).strip() if row1[1] is not None else None
+
+            # line 3: datetime,...,temperature,...
+            row2 = pd.read_csv(io.StringIO(lines[2]), header=None).iloc[0].tolist()
+            for i in range(0, len(row2) - 1, 2):
+                key = str(row2[i]).strip()
+                val = row2[i + 1]
+                if key == 'datetime':
+                    self.measurement_datetime = str(val).strip() if val is not None else None
+                elif key == 'temperature':
+                    self.temperature = _to_float(val)
+
+            # line 4: Vstart(V),...,Vstop(V),...,Count,...,Area(cm2),...
+            row3 = pd.read_csv(io.StringIO(lines[3]), header=None).iloc[0].tolist()
+            map_line4 = {
+                'Vstart(V)': 'v_start',
+                'Vstop(V)': 'v_stop',
+                'Count': 'count',
+                'Area(cm2)': 'area_cm2',
+            }
+            for i in range(0, len(row3) - 1, 2):
+                key = str(row3[i]).strip()
+                val = row3[i + 1]
+                attr = map_line4.get(key)
+                if attr:
+                    if attr == 'count':
+                        fv = _to_float(val)
+                        setattr(self, attr, int(fv) if fv is not None else None)
+                    else:
+                        setattr(self, attr, _to_float(val))
+
+            # line 5: Voc(V),...,Isc(A),...,FF(%),...,Pmax(W),...,Eff(%),...,Vpm(V),...,Ipm(A),...
+            row4 = pd.read_csv(io.StringIO(lines[4]), header=None).iloc[0].tolist()
+            map_line5 = {
+                'Voc(V)': 'voc',
+                'Isc(A)': 'isc',
+                'FF(%)': 'ff_percent',
+                'Pmax(W)': 'pmax',
+                'Eff(%)': 'eff_percent',
+                'Vpm(V)': 'vpm',
+                'Ipm(A)': 'ipm',
+            }
+            for i in range(0, len(row4) - 1, 2):
+                key = str(row4[i]).strip()
+                val = row4[i + 1]
+                attr = map_line5.get(key)
+                if attr:
+                    setattr(self, attr, _to_float(val))
+
+            # line 6+: IV table with header V(V),I(A)
+            df = pd.read_csv(io.StringIO('\n'.join(lines[5:])))
+            if 'V(V)' not in df.columns or 'I(A)' not in df.columns:
+                logger.warning('Expected columns not found in IV table.', columns=list(df.columns))
+                return
+
+            self.voltage = pd.to_numeric(df['V(V)'], errors='coerce').dropna().astype(float).tolist()
+            self.current = pd.to_numeric(df['I(A)'], errors='coerce').dropna().astype(float).tolist()
+
+            logger.info(
+                'IV csv parsed successfully.',
+                n_points=len(self.voltage),
+                file=self.data_file,
+                voc=self.voc,
+                isc=self.isc,
+                ff=self.ff_percent,
+                eff=self.eff_percent,
+            )
+
+        except Exception as e:
+            logger.error(
+                'Failed to parse IV csv file.',
+                file=self.data_file,
+                exc_info=e,
+            )
+            raise
+
+
+m_package.__init_metainfo__()

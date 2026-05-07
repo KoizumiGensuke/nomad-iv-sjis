@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nomad-iv-sjis"
+version = "0.1.1"
+description = "Minimal NOMAD plugin to read CP932/SJIS IV csv files."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "nomad-lab>=1.4.2",
+  "pandas>=2.0"
+]
+
+[project.entry-points."nomad.plugin"]
+ivschema = "nomad_iv_sjis.schema_packages:ivschema"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

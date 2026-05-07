@@ -1,0 +1,3 @@
+data:
+  m_def: nomad_iv_sjis.schema_packages.ivdata.IVData
+  data_file: L303-M13_0min_rvs_re.csv
