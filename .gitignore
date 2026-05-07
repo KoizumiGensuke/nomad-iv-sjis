@@ -1,2 +1,15 @@
 .venv
+
+# Measurement data files
 *.csv
+!tests/data/dummy_iv_cp932.csv
+*.CSV
+*.tsv
+*.txt
+*.zip
+*.ZIP
+
+# NOMAD parse outputs
+normalized.txt
+normalized.archive.json
+parse.log
