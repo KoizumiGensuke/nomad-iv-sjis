@@ -4,7 +4,7 @@ import pandas as pd
 from nomad.metainfo import Quantity, Section, SchemaPackage
 from nomad.datamodel.data import EntryData
 from nomad.metainfo.elasticsearch_extension import Elasticsearch
-
+from nomad.datamodel.metainfo.plot import PlotSection, PlotlyFigure #, PlotlyGraphObject
 
 m_package = SchemaPackage()
 
@@ -27,8 +27,38 @@ def _to_float(value):
         m = re.search(r'[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?', s)
         return float(m.group(0)) if m else None
 
+"""
+class IVData(EntryData, PlotSection):
+    m_def = Section(
+        a_plot=[
+            PlotlyGraphObject(
+                label='IV curve',
+                graph_object={
+                    'data': [
+                        {
+                            'type': 'scatter',
+                            'mode': 'lines+markers',
+                            'name': 'IV curve',s
+                            'x': '#voltage',
+                            'y': '#current',
+                        }
+                    ],
+                    'layout': {
+                        'title': 'IV curve',
+                        'xaxis': {'title': 'Voltage / V'},
+                        'yaxis': {'title': 'Current / A'},
+                    },
+                },
+            )
+        ]
+    )
 
-class IVData(EntryData):
+    # 以下は既存 Quantity 定義
+    # data_file = Quantity(...)
+    # voltage = Quantity(type=float, shape=['*'])
+    # current = Quantity(type=float, shape=['*'])
+"""
+class IVData(EntryData, PlotSection):
     """
     Entry type for IV csv data with metadata header and IV curve.
 
@@ -225,6 +255,30 @@ class IVData(EntryData):
 
             self.voltage = pd.to_numeric(df['V(V)'], errors='coerce').dropna().astype(float).tolist()
             self.current = pd.to_numeric(df['I(A)'], errors='coerce').dropna().astype(float).tolist()
+
+            
+            self.figures = [
+                PlotlyFigure(
+                    label='IV curve',
+                    figure={
+                        'data': [
+                            {
+                                'type': 'scatter',
+                                'mode': 'lines+markers',
+                                'name': self.data_file or 'IV curve',
+                                'x': list(self.voltage),
+                                'y': list(self.current),
+                            }
+                        ],
+                        'layout': {
+                            'title': {'text': self.data_file or 'IV curve'},
+                            'xaxis': {'title': {'text': 'Voltage / V'}},
+                            'yaxis': {'title': {'text': 'Current / A'}},
+                        },
+                    },
+                )
+            ]
+
 
             logger.info(
                 'IV csv parsed successfully.',
