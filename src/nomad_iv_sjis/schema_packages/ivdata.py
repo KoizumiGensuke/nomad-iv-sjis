@@ -83,9 +83,24 @@ class IVData(EntryData):
         """Read a CP932/SJIS IV csv file, parse metadata and IV arrays."""
         super().normalize(archive, logger)
 
-        if not self.data_file:
-            logger.debug('No data_file set, skipping IVData.normalize')
-            return
+        #if not self.data_file:
+        #    logger.debug('No data_file set, skipping IVData.normalize')
+        #    return
+
+
+
+        if not data_file:
+            raise ValueError(
+                'data_file is not specified. '
+                'For archive.yaml based ingest, please specify the CSV file name, e.g. '
+                'data_file: L303-M13_0min_rvs_re.csv. '
+                'Automatic CSV discovery is not available in this NOMAD processing context.'
+            )
+
+        data_file = str(data_file)
+        self.data_file = data_file
+
+        logger.info('Using IV CSV file.', data_file=self.data_file)
 
         try:
             # Read raw bytes to avoid text-reader encoding conflicts.
@@ -182,5 +197,95 @@ class IVData(EntryData):
             )
             raise
 
+
+
+
+from pathlib import Path
+
+
+def _find_csv_in_same_upload(archive, logger):
+    """
+    ####### これは使ってない ######
+    
+    NOMAD upload 内から IV CSV 候補を探す。
+
+    優先順位:
+    1. mainfile と同じディレクトリの CSV
+    2. upload 全体の CSV
+
+    Returns:
+        str: NOMAD raw_file() に渡せる upload 内相対パス
+
+    Raises:
+        ValueError: CSV が見つからない、または複数あり一意に決められない場合
+    """
+
+    # archive.metadata.mainfile は、多くの場合 test_iv.archive.yaml の upload 内パス
+    mainfile = getattr(archive.metadata, 'mainfile', None)
+    main_dir = str(Path(mainfile).parent) if mainfile else '.'
+    if main_dir == '.':
+        main_dir = ''
+
+    # NOMAD のバージョン差を吸収するため、候補取得を少し防御的に書く
+    raw_files = []
+
+    # 方法 1: m_context に raw_file_manifest がある場合
+    if hasattr(archive.m_context, 'raw_file_manifest'):
+        manifest = archive.m_context.raw_file_manifest()
+        if isinstance(manifest, dict):
+            raw_files = list(manifest.keys())
+        else:
+            raw_files = list(manifest)
+
+    # 方法 2: upload_files.raw_file_manifest() がある場合
+    elif hasattr(archive.m_context, 'upload_files') and hasattr(
+        archive.m_context.upload_files, 'raw_file_manifest'
+    ):
+        manifest = archive.m_context.upload_files.raw_file_manifest()
+        if isinstance(manifest, dict):
+            raw_files = list(manifest.keys())
+        else:
+            raw_files = list(manifest)
+
+    else:
+        raise ValueError(
+            'Could not list raw files in upload. '
+            'Please specify data_file explicitly.'
+        )
+
+    csv_files = [
+        f for f in raw_files
+        if f.lower().endswith('.csv')
+    ]
+
+    if not csv_files:
+        raise ValueError(
+            'No CSV file was found in the upload. '
+            'Please upload an IV CSV file or specify data_file.'
+        )
+
+    # mainfile と同じディレクトリの CSV を優先
+    if main_dir:
+        same_dir_csv_files = [
+            f for f in csv_files
+            if str(Path(f).parent) == main_dir
+        ]
+    else:
+        same_dir_csv_files = [
+            f for f in csv_files
+            if str(Path(f).parent) in ('', '.')
+        ]
+
+    candidates = same_dir_csv_files or csv_files
+
+    if len(candidates) == 1:
+        logger.info('Automatically selected CSV file', data_file=candidates[0])
+        return candidates[0]
+
+    raise ValueError(
+        'Multiple CSV files were found in the upload, '
+        'and the IV CSV file could not be selected automatically: '
+        f'{candidates}. Please specify data_file explicitly.'
+    )
 
 m_package.__init_metainfo__()
